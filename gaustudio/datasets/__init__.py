@@ -1,18 +1,20 @@
 datasets = {}
-import numpy as np
-from PIL import Image
 import dataclasses
 import math
 import os
+
+import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import Image
+
 
 def resizeTorch(tensor_image, resolution):
     # Normalize to PIL range [0, 255] and convert to uint8 type if necessary
     if tensor_image.max() <= 1.0:
         tensor_image = tensor_image * 255.0
     tensor_image = tensor_image.byte()
-    
+
     # Convert tensor to PIL image for resizing
     pil_image = Image.fromarray(tensor_image.cpu().numpy())
 
@@ -22,6 +24,7 @@ def resizeTorch(tensor_image, resolution):
     # Convert back to tensor and normalize to [0, 1]
     resized_tensor_image = torch.from_numpy(np.array(resized_pil_image)).float() / 255.0
     return resized_tensor_image
+
 
 def resizeDepthTorch(tensor_depth_image, resolution):
     if tensor_depth_image.ndim != 2:
@@ -42,6 +45,7 @@ def resizeDepthTorch(tensor_depth_image, resolution):
 
     return resized_tensor_depth_image
 
+
 def getWorld2View(R, t):
     Rt = np.zeros((4, 4))
     Rt[:3, :3] = R.transpose()
@@ -49,7 +53,8 @@ def getWorld2View(R, t):
     Rt[3, 3] = 1.0
     return np.float32(Rt)
 
-def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
+
+def getWorld2View2(R, t, translate=np.array([0.0, 0.0, 0.0]), scale=1.0):
     Rt = np.zeros((4, 4))
     Rt[:3, :3] = R.transpose()
     Rt[:3, 3] = t
@@ -61,6 +66,7 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     C2W[:3, 3] = cam_center
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
+
 
 # Adopted from https://github.com/hbb1/2d-gaussian-splatting/pull/74
 def getProjectionMatrix(znear, zfar, fovX, fovY, width, height, principal_point_ndc=None):
@@ -103,6 +109,7 @@ def getProjectionMatrix(znear, zfar, fovX, fovY, width, height, principal_point_
     P[2, 3] = -(zfar * znear) / (zfar - znear)
     return P
 
+
 def ndc_2_cam(ndc_xyz, intrinsic, W, H):
     inv_scale = torch.tensor([[W - 1, H - 1]], device=ndc_xyz.device)
     cam_z = ndc_xyz[..., 2:3]
@@ -111,29 +118,29 @@ def ndc_2_cam(ndc_xyz, intrinsic, W, H):
     cam_xyz = cam_xyz @ torch.inverse(intrinsic.t())
     return cam_xyz
 
+
 @dataclasses.dataclass
 class Camera:
-
     R: np.ndarray
-    T: np.ndarray 
+    T: np.ndarray
     FoVx: float
     FoVy: float
-    
+
     image_width: int
     image_height: int
-    
+
     znear: float = 0.1
     zfar: float = 100
-    
+
     trans: np.array = np.array([0.0, 0.0, 0.0])
     scale: float = 1.0
 
-    world_view_transform: torch.tensor = None 
+    world_view_transform: torch.tensor = None
     full_proj_transform: torch.tensor = None
     projection_matrix: torch.tensor = None
-    camera_center: torch.tensor = None    
+    camera_center: torch.tensor = None
     principal_point_ndc: np.array = np.array([0.5, 0.5])
-    
+
     image_path: str = None
     image_name: str = None
     image: np.array = None
@@ -141,27 +148,34 @@ class Camera:
     mask: np.array = None
     normal: np.array = None
     depth: np.array = None
-    
+
     def __post_init__(self):
         self._setup()
 
     def _setup(self):
         self.world_view_transform = torch.tensor(getWorld2View2(self.R, self.T, self.trans, self.scale)).transpose(0, 1)
-        self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, 
-                                                     fovX=self.FoVx, fovY=self.FoVy,
-                                                     width=self.image_width, height=self.image_height,
-                                                     principal_point_ndc=self.principal_point_ndc).transpose(0,1)
-        self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
-        
+        self.projection_matrix = getProjectionMatrix(
+            znear=self.znear,
+            zfar=self.zfar,
+            fovX=self.FoVx,
+            fovY=self.FoVy,
+            width=self.image_width,
+            height=self.image_height,
+            principal_point_ndc=self.principal_point_ndc,
+        ).transpose(0, 1)
+        self.full_proj_transform = (
+            self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))
+        ).squeeze(0)
+
         if self.image_path is not None and self.image is None:
             self.image = torch.from_numpy(np.array(Image.open(self.image_path).convert("RGB"))) / 255.0
             self.image_name = os.path.basename(self.image_path).split(".")[0]
             self.image_height, self.image_width, _ = self.image.shape
-        
+
         # Compute camera center from inverse view matrix
         view_inv = torch.inverse(self.world_view_transform)
         self.camera_center = view_inv[3][:3]
-    
+
     def load_image(self, image_path):
         if image_path is not None:
             self.image_path = image_path
@@ -170,52 +184,56 @@ class Camera:
             self.image_height, self.image_width, _ = self.image.shape
         else:
             print("No image path provided.")
-            
+
     def __repr__(self):
         return f"Camera(FoVx={self.FoVx:.2f}, FoVy={self.FoVy:.2f}, image_width={self.image_width}, image_height={self.image_height}, znear={self.znear}, zfar={self.zfar})"
-        
+
     def to(self, device: torch.device):
         for field in dataclasses.fields(self):
-            value = getattr(self, field.name) 
+            value = getattr(self, field.name)
             if isinstance(value, torch.Tensor):
                 setattr(self, field.name, value.to(device))
             elif isinstance(value, (list, tuple)) and len(value) > 0 and isinstance(value[0], torch.Tensor):
                 setattr(self, field.name, [v.to(device) for v in value])
 
         return self
-    
+
     def update_intrinsics(self, intrinsics, image_width, image_height):
         fx = intrinsics[0, 0]
         fy = intrinsics[1, 1]
-        
+
         self.FoVx = 2.0 * np.arctan(image_width / (2.0 * fx))
         self.FoVy = 2.0 * np.arctan(image_height / (2.0 * fy))
-        
+
         self.image_width = image_width
         self.image_height = image_height
-    
+
     @property
     def fx(self):
         return self.intrinsics[0, 0]
-    
+
     @property
     def fy(self):
         return self.intrinsics[1, 1]
-    
+
     @property
     def extrinsics(self):
-        return self.world_view_transform.transpose(0,1).contiguous() # cam2world
-    
+        return self.world_view_transform.transpose(0, 1).contiguous()  # cam2world
+
     @property
     def intrinsics(self):
         tan_fovx = np.tan(self.FoVx / 2.0)
         tan_fovy = np.tan(self.FoVy / 2.0)
         focal_y = self.image_height / (2.0 * tan_fovy)
         focal_x = self.image_width / (2.0 * tan_fovx)
-        return torch.tensor([[focal_x, 0, self.image_width * self.principal_point_ndc[0]], 
-                             [0, focal_y, self.image_height * self.principal_point_ndc[1]], 
-                             [0, 0, 1]]).float()
-        
+        return torch.tensor(
+            [
+                [focal_x, 0, self.image_width * self.principal_point_ndc[0]],
+                [0, focal_y, self.image_height * self.principal_point_ndc[1]],
+                [0, 0, 1],
+            ]
+        ).float()
+
     @extrinsics.setter
     def extrinsics(self, extrinsics):
         """Sets the extrinsic parameters of the camera"""
@@ -224,10 +242,10 @@ class Camera:
         self._setup()
 
     def downsample_scale(self, scale):
-        resolution = round(self.image_width/scale), round(self.image_height/scale)
+        resolution = round(self.image_width / scale), round(self.image_height / scale)
         self.downsample(resolution)
         return self
-    
+
     def downsample(self, resolution):
         if self.image is not None:
             resized_image_rgb = resizeTorch(self.image, resolution)
@@ -244,7 +262,7 @@ class Camera:
             self.normal = resizeTorch(self.normal, resolution)
         self.image_width, self.image_height = resolution
         return self
-    
+
     def insideView(self, world_xyz, mask=None):
         # Use the camera's mask if none is provided
         if mask is None:
@@ -252,7 +270,7 @@ class Camera:
 
         # Homogeneous coordinates
         world_xyz_homogeneous = torch.cat([world_xyz, torch.ones_like(world_xyz[:, :1])], dim=-1)
-        
+
         # Transform to clip space
         clip_space = torch.matmul(world_xyz_homogeneous, self.full_proj_transform)
 
@@ -265,13 +283,13 @@ class Camera:
 
         # Check if points are in front of the camera
         in_front = clip_space[:, 2] > 0
-        
+
         # Check if points are inside the image bounds
         inside_image = (ndc[:, 0] >= -1) & (ndc[:, 0] <= 1) & (ndc[:, 1] >= -1) & (ndc[:, 1] <= 1)
-        
+
         # Combine conditions
         valid_points = in_front & inside_image
-        
+
         # For valid points, check if they're inside the mask
         inside_mask = torch.zeros_like(valid_points, dtype=torch.bool)
         if valid_points.any():
@@ -284,34 +302,38 @@ class Camera:
 
         return inside_mask
 
-    def depth2point(self, depth=None, coordinate='camera'):
+    def depth2point(self, depth=None, coordinate="camera"):
         if depth is None:
             depth = self.depth
         if depth is None:
             raise ValueError("Depth is not available.")
-        
+
         depth_height, depth_width = depth.shape
 
         valid_x = torch.arange(depth_width, dtype=torch.float32, device=depth.device) / (depth_width - 1)
         valid_y = torch.arange(depth_height, dtype=torch.float32, device=depth.device) / (depth_height - 1)
         valid_y, valid_x = torch.meshgrid(valid_y, valid_x)
         ndc_xyz = torch.stack([valid_x, valid_y, depth], dim=-1)
-        
-        if coordinate == 'ndc':
+
+        if coordinate == "ndc":
             return ndc_xyz
         else:
             # cam_x = torch.arange(depth_width, dtype=torch.float32, device=depth.device)
             # cam_y = torch.arange(depth_height, dtype=torch.float32, device=depth.device)
             # cam_x, cam_y = torch.meshgrid(cam_y, cam_x)
             # cam_xy = torch.stack([cam_x, cam_y], dim=-1) * depth[..., None]
-            # cam_xyz = torch.cat([cam_xy, depth[..., None]], axis=-1)         
+            # cam_xyz = torch.cat([cam_xy, depth[..., None]], axis=-1)
             # cam_xyz = cam_xyz @ torch.inverse(self.intrinsics.to(depth.device).t())
-            cam_xyz = ndc_2_cam(ndc_xyz[None, None, None, ...], self.intrinsics.to(depth.device), depth_width, depth_height)
-        if coordinate == 'camera':
+            cam_xyz = ndc_2_cam(
+                ndc_xyz[None, None, None, ...], self.intrinsics.to(depth.device), depth_width, depth_height
+            )
+        if coordinate == "camera":
             return cam_xyz.reshape(*depth.shape, 3)
-        elif coordinate == 'world':
-            cam_xyz = cam_xyz.reshape(-1,3)
-            world_xyz = torch.cat([cam_xyz, torch.ones_like(cam_xyz[...,0:1])], axis=-1) @ torch.inverse(self.extrinsics.to(depth.device)).transpose(0,1)
+        elif coordinate == "world":
+            cam_xyz = cam_xyz.reshape(-1, 3)
+            world_xyz = torch.cat([cam_xyz, torch.ones_like(cam_xyz[..., 0:1])], axis=-1) @ torch.inverse(
+                self.extrinsics.to(depth.device)
+            ).transpose(0, 1)
             world_xyz = world_xyz[..., :3]
             return world_xyz.reshape(*depth.shape, 3)
         else:
@@ -319,44 +341,46 @@ class Camera:
         return None
 
     # Adapted from https://github.com/baegwangbin/DSINE/blob/main/utils/d2n/cross.py
-    def depth2normal(self, depth=None, k: int = 3, d_min: float = 1e-3, d_max: float = 100000.0, coordinate='camera'):
+    def depth2normal(self, depth=None, k: int = 3, d_min: float = 1e-3, d_max: float = 100000.0, coordinate="camera"):
         if depth is None:
             depth = self.depth
         if depth is None:
             raise ValueError("Depth is not available.")
-        
-        points = self.depth2point(depth, coordinate='camera')[None, ...]
+
+        points = self.depth2point(depth, coordinate="camera")[None, ...]
         points = points.permute(0, 3, 1, 2)
         k = (k - 1) // 2
 
         B, _, H, W = points.size()
-        points_pad = F.pad(points, (k,k,k,k), mode='constant', value=0)             # (B, 3, k+H+k, k+W+k)
-        valid_pad = (points_pad[:,2:,:,:] > d_min) & (points_pad[:,2:,:,:] < d_max) # (B, 1, k+H+k, k+W+k)
+        points_pad = F.pad(points, (k, k, k, k), mode="constant", value=0)  # (B, 3, k+H+k, k+W+k)
+        valid_pad = (points_pad[:, 2:, :, :] > d_min) & (points_pad[:, 2:, :, :] < d_max)  # (B, 1, k+H+k, k+W+k)
         valid_pad = valid_pad.float()
 
         # vertical vector (top - bottom)
-        vec_vert = points_pad[:, :, :H, k:k+W] - points_pad[:, :, 2*k:2*k+H, k:k+W]   # (B, 3, H, W)
+        vec_vert = points_pad[:, :, :H, k : k + W] - points_pad[:, :, 2 * k : 2 * k + H, k : k + W]  # (B, 3, H, W)
 
         # horizontal vector (left - right)
-        vec_hori = points_pad[:, :, k:k+H, :W] - points_pad[:, :, k:k+H, 2*k:2*k+W]   # (B, 3, H, W)
+        vec_hori = points_pad[:, :, k : k + H, :W] - points_pad[:, :, k : k + H, 2 * k : 2 * k + W]  # (B, 3, H, W)
 
         # valid_mask (all five depth values - center/top/bottom/left/right should be valid)
-        valid_mask = valid_pad[:, :, k:k+H,     k:k+W       ] * \
-                    valid_pad[:, :, :H,        k:k+W       ] * \
-                    valid_pad[:, :, 2*k:2*k+H, k:k+W       ] * \
-                    valid_pad[:, :, k:k+H,     :W          ] * \
-                    valid_pad[:, :, k:k+H,     2*k:2*k+W   ]
+        valid_mask = (
+            valid_pad[:, :, k : k + H, k : k + W]
+            * valid_pad[:, :, :H, k : k + W]
+            * valid_pad[:, :, 2 * k : 2 * k + H, k : k + W]
+            * valid_pad[:, :, k : k + H, :W]
+            * valid_pad[:, :, k : k + H, 2 * k : 2 * k + W]
+        )
         valid_mask = valid_mask > 0.5
-        
+
         # get cross product (B, 3, H, W)
-        cross_product = - torch.linalg.cross(vec_vert, vec_hori, dim=1)
+        cross_product = -torch.linalg.cross(vec_vert, vec_hori, dim=1)
         normal = F.normalize(cross_product, p=2.0, dim=1, eps=1e-12)
-        
-        if coordinate == 'world':
+
+        if coordinate == "world":
             normal = normal.permute(0, 2, 3, 1) @ self.extrinsics[:3, :3].inverse().t()
             normal = normal.permute(0, 3, 1, 2)
         normal[~valid_mask.repeat(1, 3, 1, 1)] = -1
-        
+
         return normal.squeeze(0).permute(1, 2, 0)
 
     def normal2worldnormal(self, normal=None):
@@ -366,13 +390,13 @@ class Camera:
             raise ValueError("Normal is not available.")
         normal = normal @ self.extrinsics[:3, :3].inverse().t()
         return normal
-    
+
     def worldnormal2normal(self, normal):
         if normal is None:
             raise ValueError("Normal is not available.")
         normal = normal @ self.extrinsics[:3, :3].t()
         return normal
-        
+
 
 def register(name):
     def decorator(cls):
@@ -395,6 +419,19 @@ def make(config):
     return dataset
 
 
-from . import colmap, waymo, polycam, scannet, mvsnet, nerf, \
-                nsvf, deepvoxels, nero, mobilebrick, neus, \
-                nerfstudio, vanilla, nisr
+from . import (
+    colmap,
+    deepvoxels,
+    mobilebrick,
+    mvsnet,
+    nerf,
+    nerfstudio,
+    nero,
+    neus,
+    nisr,
+    nsvf,
+    polycam,
+    scannet,
+    vanilla,
+    waymo,
+)

@@ -1,16 +1,25 @@
-import click
 from typing import Optional
 
+import click
+
+
 @click.command()
-@click.option('--dataset', '-d', type=str, default='colmap', help='Dataset name (polycam, mvsnet, nerf, scannet, waymo)')
-@click.option('--source_path', '-s', required=True, help='Path to the dataset')
-@click.option('--output_dir', '-o', required=True, help='Path to the output directory')
-@click.option('--init', default='colmap', type=str, help='Initializer name (colmap, loftr, dust3r, mvsplat, midas)')
-@click.option('--overwrite', help='Overwrite existing files', is_flag=True)
-@click.option('--w_mask', '-w', is_flag=True, help='Use mask')
-@click.option('--resolution', '-r', default=1, type=int, help='Resolution')
-def main(dataset: str, source_path: Optional[str], output_dir: Optional[str], 
-         init: str, overwrite: bool, w_mask: bool, resolution: int) -> None:
+@click.option("--dataset", "-d", type=str, default="waymo", help="Dataset name (polycam, mvsnet, nerf, scannet, waymo)")
+@click.option("--source_path", "-s", required=True, help="Path to the dataset")
+@click.option("--output_dir", "-o", required=True, help="Path to the output directory")
+@click.option("--init", default="loftr", type=str, help="Initializer name (colmap, loftr, dust3r, mvsplat, midas)")
+@click.option("--overwrite", help="Overwrite existing files", is_flag=True)
+@click.option("--w_mask", "-w", is_flag=True, help="Use mask")
+@click.option("--resolution", "-r", default=1, type=int, help="Resolution")
+def main(
+    dataset: str,
+    source_path: Optional[str],
+    output_dir: Optional[str],
+    init: str,
+    overwrite: bool,
+    w_mask: bool,
+    resolution: int,
+) -> None:
     """
     Main function to run the pipeline.
 
@@ -22,8 +31,7 @@ def main(dataset: str, source_path: Optional[str], output_dir: Optional[str],
         overwrite (bool): Whether to overwrite existing files.
         with_mask (bool): Whether to use mask.
     """
-    from gaustudio import datasets
-    from gaustudio import models
+    from gaustudio import datasets, models
     from gaustudio.pipelines import initializers
 
     dataset_config = {
@@ -41,5 +49,6 @@ def main(dataset: str, source_path: Optional[str], output_dir: Optional[str],
 
     initializer_instance(pcd, dataset_instance, overwrite=overwrite)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

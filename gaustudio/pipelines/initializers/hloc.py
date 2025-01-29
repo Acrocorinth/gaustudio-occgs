@@ -1,30 +1,31 @@
 import os
-import numpy as np
 import shutil
 from pathlib import Path
+
+import numpy as np
 
 from gaustudio.pipelines import initializers
 from gaustudio.pipelines.initializers.colmap import ColmapInitializer
 from gaustudio.utils.colmap_utils import create_images_from_pose_dict
 
 try:
-    from hloc import extract_features, match_features, match_dense
-    from hloc import triangulation, pairs_from_poses
+    from hloc import extract_features, match_dense, match_features, pairs_from_poses, triangulation
+
     hloc_installed = True
 except:
     hloc_installed = False
 
 
-@initializers.register('hloc')
+@initializers.register("hloc")
 class HlocInitializer(ColmapInitializer):
     def process_dataset(self):
         if not hloc_installed:
             raise ImportError("Please install hloc to use HlocInitializer.")
 
         create_images_from_pose_dict(self.ws_dir, self.pose_dict)
-        sfm_pairs = Path(f'{self.ws_dir}/pairs-sfm.txt')
-        pairs_from_poses.main(Path(f'{self.ws_dir}/model'), sfm_pairs, num_matched=10)
-        
+        sfm_pairs = Path(f"{self.ws_dir}/pairs-sfm.txt")
+        pairs_from_poses.main(Path(f"{self.ws_dir}/model"), sfm_pairs, num_matched=10)
+
         feature_conf = extract_features.confs["superpoint_aachen"]
         matcher_conf = match_features.confs["NN-superpoint"]
         features = extract_features.main(

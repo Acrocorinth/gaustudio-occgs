@@ -1,38 +1,39 @@
-import sys
 import argparse
-import os
-import time
-import logging
-from datetime import datetime
-import torch
 import json
+import logging
+import os
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
-import cv2
-import torchvision
-from tqdm import tqdm
-import open3d as o3d
-import numpy as np
+
 import click
-
+import cv2
+import numpy as np
+import open3d as o3d
 import pytorch3d
-from pytorch3d.io import load_ply, load_objs_as_meshes
-from pytorch3d.structures import Meshes
+import torch
+import torchvision
+from pytorch3d.io import load_objs_as_meshes, load_ply
 from pytorch3d.renderer import (
-    look_at_view_transform,
-    FoVPerspectiveCameras, 
-    PerspectiveCameras,
-    PointLights, 
     AmbientLights,
-    RasterizationSettings, 
-    MeshRenderer, 
-    MeshRendererWithFragments, 
-    MeshRasterizer,  
+    FoVPerspectiveCameras,
+    MeshRasterizer,
+    MeshRenderer,
+    MeshRendererWithFragments,
+    PerspectiveCameras,
+    PointLights,
+    RasterizationSettings,
     SoftPhongShader,
-    hard_rgb_blend,
     TexturesAtlas,
+    hard_rgb_blend,
+    look_at_view_transform,
 )
-
 from pytorch3d.renderer.mesh.shader import ShaderBase
+from pytorch3d.structures import Meshes
+from tqdm import tqdm
+
+
 class VertexColorShader(ShaderBase):
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         blend_params = kwargs.get("blend_params", self.blend_params)
@@ -229,10 +230,10 @@ def main(gpu, dataset, camera, mesh, source_path, output_dir, color):
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu
     n_gpus = len(gpu.split(','))
-    
-    from gaustudio.utils.misc import load_config
+
     from gaustudio import datasets
     from gaustudio.utils.cameras_utils import JSON_to_camera
+    from gaustudio.utils.misc import load_config
 
     # Load mesh
     if mesh.endswith('.obj'):
@@ -294,8 +295,8 @@ def main(gpu, dataset, camera, mesh, source_path, output_dir, color):
         view = PerspectiveCameras(focal_length=fcl_screen, principal_point=prp_screen, in_ndc=False, image_size=image_size, R=R, T=T, device="cuda")
         raster_settings = RasterizationSettings(
             image_size=image_size[0],
-            blur_radius=0.0, 
-            faces_per_pixel=1, 
+            blur_radius=0.0,
+            faces_per_pixel=1,
         )
         lights = AmbientLights(device="cuda")
         rasterizer = MeshRasterizer(

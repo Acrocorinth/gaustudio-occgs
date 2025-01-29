@@ -1,22 +1,24 @@
 import os
-import pycolmap
 import shutil
-from tqdm import tqdm
-from PIL import Image, PngImagePlugin
-import numpy as np
-import torchvision
 import tempfile
-import shutil
+
+import numpy as np
+import pycolmap
+import torch
+import torchvision
+from PIL import Image, PngImagePlugin
+from tqdm import tqdm
+
 from gaustudio.pipelines import initializers
 from gaustudio.pipelines.initializers.base import BaseInitializer
-from gaustudio.utils.colmap_utils import COLMAPDatabase, create_images_bin, create_cameras_and_points_bin
-import torch
+from gaustudio.utils.colmap_utils import COLMAPDatabase, create_cameras_and_points_bin, create_images_bin
 
-@initializers.register('colmap')
+
+@initializers.register("colmap")
 class ColmapInitializer(BaseInitializer):
     def __init__(self, initializer_config):
         super().__init__(initializer_config)
-        self.ws_dir = self.initializer_config.get('workspace_dir')
+        self.ws_dir = self.initializer_config.get("workspace_dir")
         if self.ws_dir is None:
             self.ws_dir = tempfile.mkdtemp()
             print(f"No workspace directory provided. Using temporary directory: {self.ws_dir}")
@@ -24,13 +26,13 @@ class ColmapInitializer(BaseInitializer):
         os.makedirs(self.ws_dir, exist_ok=True)
 
         self.db_path = os.path.join(self.ws_dir, "database.db")
-        self.images_dir = os.path.join(self.ws_dir, 'images')
+        self.images_dir = os.path.join(self.ws_dir, "images")
         os.makedirs(self.images_dir, exist_ok=True)
         self.pose_dict = {}
-    
+
     def __call__(self, model, dataset, overwrite=False):
         # Skip processing if sparse results exists
-        if not os.path.exists(f'{self.ws_dir}/sparse') or overwrite:
+        if not os.path.exists(f"{self.ws_dir}/sparse") or overwrite:
             self.cache_dataset(dataset)
             self.process_dataset()
 
@@ -40,31 +42,34 @@ class ColmapInitializer(BaseInitializer):
     def cache_dataset(self, dataset):
         for img_id, camera in enumerate(tqdm(dataset, desc="Caching images")):
             img_name = str(img_id).zfill(8)
-            
+
             img_np = camera.image.numpy() * 255  # Convert to HWC format
             img_pil = Image.fromarray(np.uint8(img_np))
-            img_pil.save(os.path.join(self.images_dir, f'{img_name}.jpg'), quality=95)
-            
+            img_pil.save(os.path.join(self.images_dir, f"{img_name}.jpg"), quality=95)
+
             if camera.mask is not None:
-                self.masks_dir = os.path.join(self.ws_dir, 'masks')
+                self.masks_dir = os.path.join(self.ws_dir, "masks")
                 os.makedirs(self.masks_dir, exist_ok=True)
-                torchvision.utils.save_image(camera.mask.float(), os.path.join(self.masks_dir, f'{img_name}.png'))
+                torchvision.utils.save_image(camera.mask.float(), os.path.join(self.masks_dir, f"{img_name}.png"))
 
             if camera.depth is not None:
-                self.depths_dir = os.path.join(self.ws_dir, 'depths')
+                self.depths_dir = os.path.join(self.ws_dir, "depths")
                 os.makedirs(self.depths_dir, exist_ok=True)
                 depth_max = float(camera.depth.max() + 1e-6)
                 depth_map_16bit = ((camera.depth / depth_max) * 65535).cpu().numpy().astype(np.uint16)
                 depth_img = Image.fromarray(depth_map_16bit)
                 meta = PngImagePlugin.PngInfo()
                 meta.add_text("depth_max", str(depth_max))
-                depth_img.save(os.path.join(self.depths_dir, f'{img_name}.png'), "PNG", pnginfo=meta)
+                depth_img.save(os.path.join(self.depths_dir, f"{img_name}.png"), "PNG", pnginfo=meta)
 
             self.pose_dict[img_name] = camera.extrinsics.inverse()
             intrinsics = {
-                'width': camera.image_width, 'height': camera.image_height, 
-                'fx': camera.intrinsics[0, 0], 'fy': camera.intrinsics[1, 1],
-                'cx': camera.intrinsics[0, 2], 'cy': camera.intrinsics[1, 2]
+                "width": camera.image_width,
+                "height": camera.image_height,
+                "fx": camera.intrinsics[0, 0],
+                "fy": camera.intrinsics[1, 1],
+                "cx": camera.intrinsics[0, 2],
+                "cy": camera.intrinsics[1, 2],
             }
 
         print("Creating camera and points model data...")
@@ -73,10 +78,10 @@ class ColmapInitializer(BaseInitializer):
     def process_dataset(self):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
-        
+
         pycolmap.extract_features(image_path=self.images_dir, database_path=self.db_path)
         pycolmap.match_exhaustive(self.db_path)
-        
+
         db = COLMAPDatabase.connect(self.db_path)
         images = list(db.execute('select * from images'))
         create_images_bin(self.ws_dir, self.pose_dict, images)

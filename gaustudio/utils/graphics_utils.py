@@ -1,14 +1,17 @@
-import torch
 import math
+
 import numpy as np
+import torch
+
 try:
     from cumcubes import marching_cubes
 except:
     from mcubes import marching_cubes
-from skimage import measure
-import torch
 import torch.fft
+
+# from skimage import measure
 from torch import nn
+
 
 def fov2focal(fov, pixels):
     return pixels / (2 * math.tan(fov / 2))
