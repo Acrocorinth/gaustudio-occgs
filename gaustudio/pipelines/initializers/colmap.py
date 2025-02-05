@@ -41,7 +41,7 @@ class ColmapInitializer(BaseInitializer):
 
     def cache_dataset(self, dataset):
         for img_id, camera in enumerate(tqdm(dataset, desc="Caching images")):
-            img_name = str(img_id).zfill(8)
+            img_name = camera.image_name
 
             img_np = camera.image.numpy() * 255  # Convert to HWC format
             img_pil = Image.fromarray(np.uint8(img_np))

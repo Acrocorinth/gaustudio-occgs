@@ -39,4 +39,4 @@ thumbs.db
 .DS_Store
 .secret
 results
-thirdparty/
+# thirdparty/

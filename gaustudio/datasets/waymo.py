@@ -10,8 +10,10 @@ from typing import Dict, List
 
 import cv2
 import numpy as np
+import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 from gaustudio import datasets
 from gaustudio.datasets.utils import focal2fov, getNerfppNorm
@@ -122,6 +124,31 @@ class WaymoDatasetBase:
     def downsample_scale(self, resolution_scale):
         self.all_cameras = [c.downsample_scale(resolution_scale) for c in self.all_cameras]
 
+    def load_mask(self, datadir):
+        sky_mask_dir = os.path.join(datadir, "sky_mask")
+        dynamic_mask_dir = os.path.join(datadir, "dynamic_mask")
+        test_mask_dir = os.path.join(datadir, "test_mask")
+        os.makedirs(test_mask_dir, exist_ok=True)
+        sky_mask_filenames_all = sorted(glob(os.path.join(sky_mask_dir, "*.jpg")))
+        masks = [[] for i in range(5)]
+        for filename in tqdm(sky_mask_filenames_all):
+            image_basename = os.path.basename(filename)
+            cam = image_filename_to_cam(filename)
+            test_filename = os.path.join(test_mask_dir, image_basename)
+            dynamic_mask_filename = os.path.join(dynamic_mask_dir, image_basename.replace(".jpg", ".png"))
+            sky_mask = cv2.imread(str(filename), cv2.IMREAD_GRAYSCALE)
+            dynamic_mask = cv2.imread(str(dynamic_mask_filename), cv2.IMREAD_GRAYSCALE)
+            sky_mask = np.array(sky_mask)
+            dynamic_mask = np.array(dynamic_mask)
+            mask = np.logical_or(sky_mask == 255, dynamic_mask == 255).astype(np.uint8)
+            mask = np.where(mask, 0, 1).astype(np.uint8)
+            # Image.fromarray(sky_mask).save(test_filename)
+            mask = mask.transpose(0, 1)
+            mask = torch.from_numpy(mask)
+            masks[cam].append(mask)
+
+        return masks
+
     def load_camera_info(self, datadir):
         ego_pose_dir = os.path.join(datadir, "ego_pose")
         extrinsics_dir = os.path.join(datadir, "extrinsics")
@@ -165,31 +192,54 @@ class WaymoDatasetBase:
     def _initialize(self, cam_info_path):
         all_cameras_unsorted = []
         intrinsics, extrinsics, ego_frame_poses, ego_cam_poses = self.load_camera_info(cam_info_path)
+        masks = self.load_mask(cam_info_path)
+        scenario_path = os.path.join(cam_info_path, "scenario.pt")
+        with open(scenario_path, "rb") as f:
+            scenario_data = pickle.load(f)
         image_dir = os.path.join(cam_info_path, "images")
+        undistort_dir = os.path.join(cam_info_path, "undistorted_images")
+        os.makedirs(undistort_dir, exist_ok=True)
+        undistort_intr_dir = os.path.join(cam_info_path, "undistorted_intrinsics")
+        os.makedirs(undistort_intr_dir, exist_ok=True)
         image_filenames_all = sorted(glob(os.path.join(image_dir, "*.jpg")))
-        for filename in image_filenames_all:
+        for filename in tqdm(image_filenames_all):
             image_basename = os.path.basename(filename)
             frame = image_filename_to_frame(image_basename)
             cam = image_filename_to_cam(image_basename)
+            camera_data = scenario_data["observers"][cameras[cam]]
+            frame_json = camera_data["data"]
+            distortion_coeffs = frame_json["distortion"][frame]
             ixt = intrinsics[cam]
             ext = extrinsics[cam]
             pose = ego_cam_poses[cam, frame]
+            mask = masks[cam][frame]
             c2w = pose @ ext
-            fx, fy, cx, cy = ixt[0, 0], ixt[1, 1], ixt[0, 2], ixt[1, 2]
+
             w2c = np.linalg.inv(c2w)
             R = np.transpose(w2c[:3, :3])
             T = w2c[:3, 3]
             h, w = image_heights[cam], image_widths[cam]
+
+            img = cv2.imread(str(filename))
+            undistort_intr, roi = cv2.getOptimalNewCameraMatrix(ixt, distortion_coeffs, (w, h), 0)
+            np.savetxt(os.path.join(undistort_intr_dir, image_basename.replace(".jpg", ".txt")), undistort_intr)
+            undistorted_img = cv2.undistort(img, ixt, distortion_coeffs, None, undistort_intr)
+            undistort_filename = os.path.join(undistort_dir, image_basename)
+            cv2.imwrite(str(undistort_filename), undistorted_img)
+            fx, fy, cx, cy = undistort_intr[0, 0], undistort_intr[1, 1], undistort_intr[0, 2], undistort_intr[1, 2]
             FoVy = focal2fov(fy, h)
             FoVx = focal2fov(fx, w)
+
             _camera = datasets.Camera(
                 R=R,
                 T=T,
                 FoVy=FoVy,
                 FoVx=FoVx,
-                image_path=filename,
+                image_path=undistort_filename,
+                image_name=image_basename,
                 image_width=w,
                 image_height=h,
+                mask=mask,
                 principal_point_ndc=np.array([cx / w, cy / h]),
             )
             all_cameras_unsorted.append(_camera)
