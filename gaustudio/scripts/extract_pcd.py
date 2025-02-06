@@ -1,20 +1,20 @@
-import os
-import torch
-import json
-import torchvision
-import trimesh
 import argparse
-import cv2
+import json
+import os
 
-from scipy.spatial import cKDTree
-from tqdm import tqdm
+import cv2
 import numpy as np
 import open3d as o3d
-
-from gaustudio.utils.sh_utils import SH2RGB
-from gaustudio.utils.misc import load_config
+import torch
+import torchvision
+import trimesh
 from gaustudio import models, renderers
 from gaustudio.datasets.utils import JSON_to_camera, getNerfppNorm
+from gaustudio.utils.misc import load_config
+from gaustudio.utils.sh_utils import SH2RGB
+from scipy.spatial import cKDTree
+from tqdm import tqdm
+
 
 def searchForMaxIteration(folder):
     saved_iters = [int(fname.split("_")[-1]) for fname in os.listdir(folder)]
@@ -52,7 +52,7 @@ def clean_point_cloud(pcd, nb_neighbors=50, std_ratio=2.0):
 
 def mesh_nksr(input_xyz, input_normal, voxel_size=0.008, detail_level=0):
     try:
-        from nksr import Reconstructor, utils, fields
+        from nksr import Reconstructor, fields, utils
     except:
         raise ImportError("Please install nksr to use this feature.")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -254,7 +254,7 @@ def main():
     
     # set CUDA_VISIBLE_DEVICES then import pytorch-lightning
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    # os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     n_gpus = len(args.gpu.split(','))
     
     # parse YAML config to OmegaConf

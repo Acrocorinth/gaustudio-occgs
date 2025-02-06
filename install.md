@@ -21,6 +21,6 @@ cd Hierarchical-Localization/
 python -m pip install -e .
 pycolmap to 3.10.0
 pip install PyMCubes==0.1.0
-pip install skimage
+pip install scikit-image
 
 ```

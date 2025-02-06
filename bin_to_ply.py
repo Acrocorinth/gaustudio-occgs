@@ -74,7 +74,7 @@ def read_points3D_binary(path_to_model_file):
 
 def main():
     input_file = "/mnt/ssd4t/occgs/waymo_test/031/loftr/sparse/0/points3D.bin"
-    output_file = "/home/minghui/Code/Project/gaustudio/points3D.ply"
+    output_file = "/mnt/ssd4t/occgs/waymo_test/031/loftr/sparse/0/points3D.ply"
     xyz, rgb, _ = read_points3D_binary(input_file)
     storePly(output_file, xyz, rgb)
 

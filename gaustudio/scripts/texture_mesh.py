@@ -1,29 +1,30 @@
 # Modified from https://github.com/AiuniAI/Unique3D/blob/main/scripts/project_mesh.py
-import sys
 import argparse
-import os
-import time
-import logging
-from datetime import datetime
-import torch
 import json
+import logging
+import os
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
-import cv2
-import torchvision
-from tqdm import tqdm
-import open3d as o3d
-import numpy as np
-import trimesh
 
+import cv2
+import numpy as np
+import open3d as o3d
 import pytorch3d
-from pytorch3d.io import load_ply, load_objs_as_meshes
-from pytorch3d.structures import Meshes
+import torch
+import torchvision
+import trimesh
+from pytorch3d.io import load_objs_as_meshes, load_ply
 from pytorch3d.renderer import (
+    MeshRasterizer,
+    MeshRendererWithFragments,
     PerspectiveCameras,
-    RasterizationSettings, 
-    MeshRendererWithFragments, 
-    MeshRasterizer,  
+    RasterizationSettings,
 )
+from pytorch3d.structures import Meshes
+from tqdm import tqdm
+
 
 def get_visible_faces(meshes, fragments):
     pix_to_face = fragments.pix_to_face[..., 0]
@@ -43,12 +44,12 @@ def main():
     
     # set CUDA_VISIBLE_DEVICES then import pytorch-lightning
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    # os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     n_gpus = len(args.gpu.split(','))
-    
-    from gaustudio.utils.misc import load_config
+
     from gaustudio import datasets
     from gaustudio.utils.cameras_utils import JSON_to_camera
+    from gaustudio.utils.misc import load_config
 
     if args.camera is not None and os.path.exists(args.camera):
         print("Loading camera data from {}".format(args.camera))

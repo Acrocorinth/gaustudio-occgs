@@ -125,58 +125,52 @@ class WaymoDatasetBase:
         self.all_cameras = [c.downsample_scale(resolution_scale) for c in self.all_cameras]
 
     def load_mask(self, datadir):
-        sky_mask_dir = os.path.join(datadir, "sky_mask")
-        dynamic_mask_dir = os.path.join(datadir, "dynamic_mask")
-        test_mask_dir = os.path.join(datadir, "test_mask")
-        os.makedirs(test_mask_dir, exist_ok=True)
-        sky_mask_filenames_all = sorted(glob(os.path.join(sky_mask_dir, "*.jpg")))
+        merge_mask_dir = os.path.join(datadir, "merge_mask")
+        merge_mask_filenames_all = sorted(glob(os.path.join(merge_mask_dir, "*.jpg")))
         masks = [[] for i in range(5)]
-        for filename in tqdm(sky_mask_filenames_all):
-            image_basename = os.path.basename(filename)
-            cam = image_filename_to_cam(filename)
-            test_filename = os.path.join(test_mask_dir, image_basename)
-            dynamic_mask_filename = os.path.join(dynamic_mask_dir, image_basename.replace(".jpg", ".png"))
-            sky_mask = cv2.imread(str(filename), cv2.IMREAD_GRAYSCALE)
-            dynamic_mask = cv2.imread(str(dynamic_mask_filename), cv2.IMREAD_GRAYSCALE)
-            sky_mask = np.array(sky_mask)
-            dynamic_mask = np.array(dynamic_mask)
-            mask = np.logical_or(sky_mask == 255, dynamic_mask == 255).astype(np.uint8)
-            mask = np.where(mask, 0, 1).astype(np.uint8)
-            # Image.fromarray(sky_mask).save(test_filename)
-            mask = mask.transpose(0, 1)
-            mask = torch.from_numpy(mask)
+        for filename in tqdm(merge_mask_filenames_all):
+            cam = image_filename_to_cam(os.path.basename(filename))
+            merge_mask = cv2.imread(str(filename), cv2.IMREAD_GRAYSCALE)
+            merge_mask = np.array(merge_mask)
+            merge_mask = merge_mask.transpose(0, 1)
+            mask = torch.from_numpy(merge_mask)
             masks[cam].append(mask)
-
         return masks
 
     def load_camera_info(self, datadir):
-        ego_pose_dir = os.path.join(datadir, "ego_pose")
-        extrinsics_dir = os.path.join(datadir, "extrinsics")
-        intrinsics_dir = os.path.join(datadir, "intrinsics")
+        ego_pose_path = os.path.join(datadir, "all_ego_pose.pt")
+        extrinsics_path = os.path.join(datadir, "all_extrinsics.pt")
+        intrinsics_path = os.path.join(datadir, "all_intrinsics.pt")
+
+        ego_pose_pt = torch.load(ego_pose_path)
+        ego_pose_keys = sorted(ego_pose_pt.keys())
+        extrinsics_pt = torch.load(extrinsics_path)
+        extrinsics_keys = sorted(extrinsics_pt.keys())
+        intrinsics_pt = torch.load(intrinsics_path)
+        intrinsics_keys = sorted(intrinsics_pt.keys())
 
         intrinsics = []
         extrinsics = []
-        for i in range(5):
-            intrinsic = np.loadtxt(os.path.join(intrinsics_dir, f"{i}.txt"))
-            fx, fy, cx, cy = intrinsic[0], intrinsic[1], intrinsic[2], intrinsic[3]
+        for k in intrinsics_keys:
+            intrinsic = intrinsics_pt[k].detach().cpu().numpy()
+            fx, fy, cx, cy = float(intrinsic[0]), float(intrinsic[1]), float(intrinsic[2]), float(intrinsic[3])
             intrinsic = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
             intrinsics.append(intrinsic)
 
-        for i in range(5):
-            cam_to_ego = np.loadtxt(os.path.join(extrinsics_dir, f"{i}.txt"))
+        for k in extrinsics_keys:
+            cam_to_ego = extrinsics_pt[k].detach().cpu().numpy()
             extrinsics.append(cam_to_ego)
 
         ego_frame_poses = []
         ego_cam_poses = [[] for i in range(5)]
-        ego_pose_paths = sorted(os.listdir(ego_pose_dir))
-        for ego_pose_path in ego_pose_paths:
+        for k in ego_pose_keys:
             # frame pose
-            if "_" not in ego_pose_path:
-                ego_frame_pose = np.loadtxt(os.path.join(ego_pose_dir, ego_pose_path))
+            if "_" not in k:
+                ego_frame_pose = ego_pose_pt[k].detach().cpu().numpy()
                 ego_frame_poses.append(ego_frame_pose)
             else:
-                cam = image_filename_to_cam(ego_pose_path)
-                ego_cam_pose = np.loadtxt(os.path.join(ego_pose_dir, ego_pose_path))
+                cam = image_filename_to_cam(k)
+                ego_cam_pose = ego_pose_pt[k].detach().cpu().numpy()
                 ego_cam_poses[cam].append(ego_cam_pose)
 
         # # center ego pose

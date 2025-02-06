@@ -1,18 +1,21 @@
-import sys
 import argparse
-import os
-import time
-import logging
-from datetime import datetime
-import torch
 import json
+import logging
+import os
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
+
 import cv2
-import torchvision
-from tqdm import tqdm
-import trimesh
 import numpy as np
+import torch
+import torchvision
+import trimesh
 from gaustudio.cameras import *
+from tqdm import tqdm
+
+
 def searchForMaxIteration(folder):
     saved_iters = [int(fname.split("_")[-1]) for fname in os.listdir(folder)]
     return max(saved_iters)
@@ -32,11 +35,11 @@ def main():
     
     # set CUDA_VISIBLE_DEVICES then import pytorch-lightning
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    # os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     n_gpus = len(args.gpu.split(','))
-    
+
+    from gaustudio import datasets, models, renderers
     from gaustudio.utils.misc import load_config
-    from gaustudio import models, datasets, renderers
     # parse YAML config to OmegaConf
     script_dir = os.path.dirname(__file__)
     config_path = os.path.join(script_dir, '../configs', args.config+'.yaml')

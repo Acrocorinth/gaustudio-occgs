@@ -228,7 +228,7 @@ def fix_mesh_normals(meshes: Meshes, camera_positions: torch.Tensor):
 def main(gpu, dataset, camera, mesh, source_path, output_dir, color):
     # set CUDA_VISIBLE_DEVICES then import pytorch-lightning
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-    os.environ['CUDA_VISIBLE_DEVICES'] = gpu
+    # os.environ['CUDA_VISIBLE_DEVICES'] = gpu
     n_gpus = len(gpu.split(','))
 
     from gaustudio import datasets

@@ -1,6 +1,7 @@
 import cv2
-import torch
 import numpy as np
+import torch
+
 
 def compute_scale_and_shift_ls(prediction, target, mask):
     # tuple specifying with axes to sum
@@ -41,10 +42,10 @@ def apply_depth_colormap(depth: np.ndarray, near_plane=None, far_plane=None):
 
 class LeastSquaresDepthEstimator(object):
     def __init__(self):
-        self._model = torch.hub.load("intel-isl/MiDaS", "DPT_Large").to("cuda:0").eval()
+        self._model = torch.hub.load("intel-isl/MiDaS", "DPT_Large").to("cuda").eval()
         self._transforms = torch.hub.load("intel-isl/MiDaS", "transforms").dpt_transform
-    
-    def predict_depth_single(self, input_image, device="cuda:0"):
+
+    def predict_depth_single(self, input_image, device="cuda"):
         input_height, input_width = np.shape(input_image)[0], np.shape(input_image)[1]
         input_image = cv2.cvtColor(input_image, cv2.COLOR_BGR2RGB)
         input_batch = self._transforms(input_image).to(device)
